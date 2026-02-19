@@ -1,6 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <queue>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -48,21 +47,89 @@ static inline double edge_weight01(int u, int v, u64 seed) {
     const u64 mantissa = h >> 11;               // keep 53 bits
     return (double)mantissa * (1.0 / (1ULL << 53));
 }
-// hypercube_neighbors(v, n, out):
-// Generates all neighbors of vertex v in the assignment's "hypercube" graph.
-// Two vertices are connected if |a - b| = 2^i for some i.
-// So neighbors are v ± 1, v ± 2, v ± 4, v ± 8, ...
-// Degree is O(log n), making this graph sparse.
 
-static inline void hypercube_neighbors(int v, int n, vector<int>& out) {
-    out.clear();
-    for (int step = 1; step < n; step <<= 1) {
-        int a = v - step;
-        int b = v + step;
-        if (a >= 0) out.push_back(a);
-        if (b < n) out.push_back(b);
+    
+struct MinHeap {
+    int size;
+    int* heap;     // heap[i] = vertex
+    int* pos;      // pos[v] = index of v in heap
+    double* key;   // pointer to best[]
+
+    MinHeap(int n, double* key_array) {
+        size = n;
+        key = key_array;
+        heap = new int[n];
+        pos  = new int[n];
+
+        for (int i = 0; i < n; i++) {
+            heap[i] = i;
+            pos[i] = i;
+        }
+
+        // build heap (Floyd)
+        for (int i = n/2 - 1; i >= 0; i--)
+            sift_down(i);
     }
-}
+
+    ~MinHeap() {
+        delete[] heap;
+        delete[] pos;
+    }
+
+    inline void swap_nodes(int i, int j) {
+        int vi = heap[i];
+        int vj = heap[j];
+        heap[i] = vj;
+        heap[j] = vi;
+        pos[vi] = j;
+        pos[vj] = i;
+    }
+
+    void sift_up(int i) {
+        while (i > 0) {
+            int parent = (i - 1) >> 1;
+            if (key[heap[i]] < key[heap[parent]]) {
+                swap_nodes(i, parent);
+                i = parent;
+            } else break;
+        }
+    }
+
+    void sift_down(int i) {
+        while (true) {
+            int left = (i << 1) + 1;
+            int right = left + 1;
+            int smallest = i;
+
+            if (left < size && key[heap[left]] < key[heap[smallest]])
+                smallest = left;
+
+            if (right < size && key[heap[right]] < key[heap[smallest]])
+                smallest = right;
+
+            if (smallest != i) {
+                swap_nodes(i, smallest);
+                i = smallest;
+            } else break;
+        }
+    }
+
+    int extract_min() {
+        int v = heap[0];
+        swap_nodes(0, size - 1);
+        size--;
+        sift_down(0);
+        return v;
+    }
+
+    void decrease_key(int v) {
+        sift_up(pos[v]);
+    }
+
+    bool empty() const {
+        return size == 0;
+    }
+};
 // mst_hypercube(n, seed):
 // Computes MST weight for the hypercube graph (dimension 1)
 // using Prim's algorithm with a min-heap (priority_queue).
@@ -82,39 +149,53 @@ static inline void hypercube_neighbors(int v, int n, vector<int>& out) {
 static double mst_hypercube(int n, u64 seed) {
     if (n <= 1) return 0.0;
 
-    vector<char> in_tree(n, 0);
-    vector<int> neigh;
-    neigh.reserve(64);
+    char* in_tree = new char[n];
+    double* best  = new double[n];
 
-    // min-heap of (weight, vertex)
-    using Item = pair<double, int>;
-    priority_queue<Item, vector<Item>, greater<Item>> pq;
-
-    in_tree[0] = 1;
-    int added = 1;
-    double total = 0.0;
-
-    hypercube_neighbors(0, n, neigh);
-    for (int nb : neigh) {
-        pq.push({edge_weight01(0, nb, seed), nb});
+    for (int i = 0; i < n; i++) {
+        in_tree[i] = 0;
+        best[i] = 1e100;
     }
 
-    while (added < n) {
-        auto [w, v] = pq.top();
-        pq.pop();
-        if (in_tree[v]) continue;
+    best[0] = 0.0;
 
-        in_tree[v] = 1;
-        total += w;
-        added++;
+    MinHeap heap(n, best);
 
-        hypercube_neighbors(v, n, neigh);
-        for (int nb : neigh) {
-            if (!in_tree[nb]) {
-                pq.push({edge_weight01(v, nb, seed), nb});
+    double total = 0.0;
+
+    while (!heap.empty()) {
+        int u = heap.extract_min();
+
+        if (in_tree[u]) continue;
+
+        in_tree[u] = 1;
+        total += best[u];
+
+        // hypercube neighbors: u ± 2^k
+        for (int step = 1; step < n; step <<= 1) {
+            int a = u - step;
+            int b = u + step;
+
+            if (a >= 0 && !in_tree[a]) {
+                double w = edge_weight01(u, a, seed);
+                if (w < best[a]) {
+                    best[a] = w;
+                    heap.decrease_key(a);
+                }
+            }
+
+            if (b < n && !in_tree[b]) {
+                double w = edge_weight01(u, b, seed);
+                if (w < best[b]) {
+                    best[b] = w;
+                    heap.decrease_key(b);
+                }
             }
         }
     }
+
+    delete[] in_tree;
+    delete[] best;
 
     return total;
 }

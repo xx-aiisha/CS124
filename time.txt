@@ -1,0 +1,2 @@
+zsh: command not found: -p
+-p ./randmst 0 65536 2 1 > out.txt  0.00s user 0.00s system 55% cpu 0.003 total
