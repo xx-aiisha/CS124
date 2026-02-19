@@ -6,6 +6,9 @@
 #include <string>
 #include <random>
 #include <algorithm>
+#include <random>
+#include <chrono>
+
 
 using namespace std;
 using u64 = uint64_t;
@@ -222,6 +225,10 @@ static double mst_geometric(int n, int dim, std::mt19937_64& rng) {
 }
 
 
+// at top of file make sure you have:
+// #include <random>
+// #include <chrono>
+
 int main(int argc, char** argv) {
     ios::sync_with_stdio(false);
     cin.tie(nullptr);
@@ -241,33 +248,37 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-// Dummy output for now (so we can test the pipeline)
-// Run multiple independent trials.
-// Each trial uses a fresh 64-bit seed to generate a new random graph.
-// We average the MST weight across trials as required by the assignment.
+    // --- RNG: create a master RNG with a nondeterministic-ish seed ---
+    std::random_device rd;
+    uint64_t time_seed = static_cast<uint64_t>(
+        std::chrono::high_resolution_clock::now().time_since_epoch().count()
+    );
+    // Combine multiple sources of entropy
+    uint64_t seed0 = (uint64_t(rd()) << 32) ^ uint64_t(rd()) ^ time_seed;
+    std::mt19937_64 master_rng(seed0);
 
-   std::mt19937_64 rng(123456789ULL);
+    double sum = 0.0;
+    for (int t = 0; t < trials; ++t) {
+        // Draw a fresh 64-bit seed for this trial
+        uint64_t trial_seed = master_rng();
 
+        if (dim == 0) {
+            // For dim 0: use the seed in your deterministic edge-weight hash
+            sum += mst_complete_dim0(n, trial_seed);
+        } else if (dim == 1) {
+            // For dim 1: same idea, pass the trial seed to your hypercube MST
+            sum += mst_hypercube(n, trial_seed);
+        } else if (dim == 2 || dim == 3 || dim == 4) {
+            // Create a trial-local RNG seeded by trial_seed for reproducible point generation
+            std::mt19937_64 trial_rng(trial_seed);
+            sum += mst_geometric(n, dim, trial_rng);
+        } else {
+            cerr << "Error: dimension must be 0,1,2,3,4\n";
+            return 2;
+        }
+    }
 
-double sum = 0.0;
-for (int t = 0; t < trials; ++t) {
-    u64 seed = rng();
-  if (dim == 0) {
-    sum += mst_complete_dim0(n, seed);
-} else if (dim == 1) {
-    sum += mst_hypercube(n, seed);
-} else if (dim == 2 || dim == 3 || dim == 4) {
-    // use rng itself for point generation (already changes each trial)
-    sum += mst_geometric(n, dim, rng);
-} else {
-    cerr << "Error: dimension must be 0,1,2,3,4\n";
-    return 2;
-}
-
-
-}
-
-double average = sum / trials;
-cout << average << " " << n << " " << trials << " " << dim << "\n";
-
+    double average = sum / static_cast<double>(trials);
+    cout << average << " " << n << " " << trials << " " << dim << "\n";
+    return 0;
 }
