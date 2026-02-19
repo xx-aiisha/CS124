@@ -1,0 +1,6 @@
+randmst
+*.o
+*.aux
+*.log
+*.out
+*.toc
