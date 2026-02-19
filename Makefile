@@ -1,4 +1,5 @@
-CXX = clang++
+CCXX = g++
+
 CXXFLAGS = -O3 -std=c++17 -Wall -Wextra -pedantic
 
 randmst: randmst.cpp
